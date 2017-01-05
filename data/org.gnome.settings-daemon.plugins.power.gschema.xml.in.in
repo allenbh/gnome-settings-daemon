@@ -40,5 +40,10 @@
       <summary>Power button action</summary>
       <description>The action to take when the system power button is pressed. This action is hard-coded (and the setting ignored) on virtual machines (power off) and tablets (suspend).</description>
     </key>
+    <key name="preferred-brightness-device" type="s">
+      <default>''</default>
+      <summary>Preferred brightness device</summary>
+      <description>Prefer the named device on systems with more than one device to control the screen brightness.</description>
+    </key>
   </schema>
 </schemalist>

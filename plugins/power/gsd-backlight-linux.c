@@ -28,7 +28,34 @@
 #include <stdlib.h>
 
 #ifdef HAVE_GUDEV
+#include <gio/gio.h>
 #include <gudev/gudev.h>
+
+#define GSD_POWER_SETTINGS_SCHEMA               "org.gnome.settings-daemon.plugins.power"
+
+static gchar *
+gsd_backlight_helper_get_name (GList *devices, const gchar *name, GsdBacklightType *type)
+{
+	const gchar *name_tmp, *type_tmp;
+	GList *d;
+
+	for (d = devices; d != NULL; d = d->next) {
+		name_tmp = g_udev_device_get_name (d->data);
+		if (g_strcmp0 (name_tmp, name) == 0) {
+			if (type != NULL) {
+				type_tmp = g_udev_device_get_sysfs_attr (d->data, "type");
+				if (g_strcmp0 (type_tmp, "firmware") == 0)
+					*type = GSD_BACKLIGHT_TYPE_FIRMWARE;
+				else if (g_strcmp0 (type_tmp, "platform") == 0)
+					*type = GSD_BACKLIGHT_TYPE_PLATFORM;
+				else
+					*type = GSD_BACKLIGHT_TYPE_RAW;
+			}
+			return g_strdup (g_udev_device_get_sysfs_path (d->data));
+		}
+	}
+	return NULL;
+}
 
 static gchar *
 gsd_backlight_helper_get_type (GList *devices, const gchar *type)
@@ -49,14 +76,27 @@ char *
 gsd_backlight_helper_get_best_backlight (GsdBacklightType *type)
 {
 #ifdef HAVE_GUDEV
+	gchar *name = NULL;
 	gchar *path = NULL;
 	GList *devices;
 	GUdevClient *client;
+	GSettings *settings;
+
+	settings = g_settings_new(GSD_POWER_SETTINGS_SCHEMA);
+	name = g_settings_get_string(settings, "preferred-brightness-device");
 
 	client = g_udev_client_new (NULL);
 	devices = g_udev_client_query_by_subsystem (client, "backlight");
 	if (devices == NULL)
 		goto out;
+
+	/* search the backlight devices and prefer the name:
+	 * preferred-brightness-device */
+	if (name != NULL && g_strcmp0 (name, "") != 0) {
+		path = gsd_backlight_helper_get_name (devices, name, type);
+		if (path != NULL)
+			goto out;
+	}
 
 	/* search the backlight devices and prefer the types:
 	 * firmware -> platform -> raw */
@@ -79,6 +119,7 @@ gsd_backlight_helper_get_best_backlight (GsdBacklightType *type)
 		goto out;
 	}
 out:
+	g_free(name);
 	g_object_unref (client);
 	g_list_foreach (devices, (GFunc) g_object_unref, NULL);
 	g_list_free (devices);
